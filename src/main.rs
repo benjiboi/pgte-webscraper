@@ -3,6 +3,7 @@ use std::fs;
 use reqwest::{StatusCode};
 use scraper::{Html, Selector};
 use std::path::Path;
+use regex::Regex;
 
 mod utils;
 
@@ -20,7 +21,6 @@ async fn main() {
 
     // loops from reading the document to querying for the next html document
     loop {
-        
         url = scraper(&document, &url, &page_n);
 
         println!("current url: {}", &url);
@@ -32,6 +32,12 @@ async fn main() {
 
         page_n += 1;
     }
+    // an exception, peregrine-I does not occur when going from link to link.
+    // url = String::from("https://practicalguidetoevil.wordpress.com/2018/12/03/peregrine-i/");
+    // document = new_chapter(&url).await;
+    // let exception = scraper(&document, &url, &page_n);
+    // println!("{}", &exception);
+
 }
 
 fn scraper(document: &Html, url: &String, page_n: &i32) -> String {
@@ -44,20 +50,22 @@ fn scraper(document: &Html, url: &String, page_n: &i32) -> String {
     let span_select = Selector::parse("span").unwrap();
     let pp = Selector::parse("p").unwrap();
     let heading = Selector::parse("h1.entry-title").unwrap();
+    let cite = Selector::parse("cite").unwrap();
 
 // subsection made for future looping through
     let maintext = document.select(&pagetext).next().unwrap();
-
-
 
     let heading = format!("# {} \n\n", document.select(&heading).next().unwrap().inner_html());
     
     // Text is initialized with the fitting heading, 
     let mut textpiece = String::from(&heading);
 
-    for element in maintext.select(&pp) {
-        
+    let mut citation = match document.select(&cite).next() {
+        Some(citing) => citing.inner_html(),
+        None => String::from(""),
+    };
 
+    for element in maintext.select(&pp) {
         // checks if <p> contains any internal <span>
         if element.select(&span_select).next().is_some() {
 
@@ -75,16 +83,25 @@ fn scraper(document: &Html, url: &String, page_n: &i32) -> String {
         // same as spans, less hassle tho
         textpiece.push_str(&element.inner_html());
         textpiece.push_str("\n\n");
+
+        if citation != "" {
+            textpiece.push_str(&citation);
+            textpiece.push_str("\n\n");
+            citation = String::from("")
         }
 
-        
+        }
     }
 
+    // Cleanup Section: mostly because there is the nasty &nbsp; everywhere in the books
+    let re = Regex::new(r"&nbsp;").unwrap();
+
+    textpiece = re.replace_all(&textpiece, " ").to_string();
     // Document Section: the text string gets written to file, also makes a raw html file for posterity
 
     // Creating two paths for, one for a clean chapter and one for a raw html dump
-    let title = format!("[{}]{}.md", page_n ,&url[54..url.len()-1]); 
-    let raw_title = format!("raw_html[{}] {}.html", page_n, &url[54..url.len()-1]);
+    let title = format!("[{}]{}.md", &page_n, &url[54..url.len()-1]); 
+    let raw_title = format!("raw_html[{}] {}.html", &page_n, &url[54..url.len()-1]);
 
     //^ While it would have been preferable to use the normal title, 
     // windows files don't support : which features in almost every chapter
